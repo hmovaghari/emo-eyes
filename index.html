@@ -1,215 +1,327 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EMO Robot Eyes Pro</title>
-    <style>
-        :root {
-            --eye-color: #00f2ff; /* رنگ نئونی فیروزه‌ای */
-            --bg-color: #050505;
-            --transition-speed: 0.4s;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>EMO Eyes</title>
+<style>
+  /* ===== Base / fullscreen robot screen ===== */
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #stage {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6vw;
+  }
 
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: var(--bg-color);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
+  /* ===== Eye housing (dark rounded square) ===== */
+  .eye {
+    position: relative;
+    width: min(30vmin, 240px);
+    height: min(34vmin, 270px);
+    background: radial-gradient(circle at 50% 45%, #10151a 0%, #07090c 60%, #030405 100%);
+    border-radius: 45%;
+    border: 2px solid #14202a;
+    box-shadow:
+      inset 0 0 40px rgba(0,0,0,.9),
+      0 0 25px rgba(0, 255, 240, .07),
+      0 0 60px rgba(0, 255, 240, .04);
+    overflow: hidden;
+    transition: border-radius .25s ease;
+  }
 
-        /* لایه افکت صفحه ربات (Scanlines) */
-        body::before {
-            content: " ";
-            position: absolute;
-            top: 0; left: 0; bottom: 0; right: 0;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
-                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            background-size: 100% 4px, 3px 100%;
-            z-index: 10;
-            pointer-events: none;
-        }
+  /* Glowing pupil */
+  .pupil {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 58%; height: 58%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 45% 40%,
+      #b8fff4 0%, #4dfbe4 25%, #0fd8c8 55%, #067f7a 85%, #033a3a 100%);
+    box-shadow:
+      0 0 18px rgba(0,255,235,.85),
+      0 0 45px rgba(0,255,235,.45),
+      0 0 90px rgba(0,255,235,.2),
+      inset 0 0 20px rgba(255,255,255,.25);
+    transition: width .18s ease, height .18s ease, border-radius .2s ease, opacity .2s ease;
+    will-change: transform;
+  }
+  /* specular highlight */
+  .pupil::after {
+    content: "";
+    position: absolute;
+    left: 22%; top: 16%;
+    width: 26%; height: 20%;
+    border-radius: 50%;
+    background: rgba(255,255,255,.55);
+    filter: blur(3px);
+  }
 
-        /* ظرف اصلی چشم‌ها */
-        .face-container {
-            display: flex;
-            gap: 80px;
-            z-index: 5;
-        }
+  /* Eyelid (closes from top) */
+  .lid {
+    position: absolute;
+    left: -5%; top: -5%;
+    width: 110%; height: 0;
+    background: #05070a;
+    border-radius: 0 0 50% 50% / 0 0 30% 30%;
+    z-index: 5;
+    transition: height .12s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,.8);
+  }
+  .eye.blink .lid { height: 105%; }
 
-        /* استایل پایه چشم */
-        .eye {
-            width: 120px;
-            height: 120px;
-            background-color: var(--eye-color);
-            box-shadow: 0 0 30px var(--eye-color), 0 0 60px var(--eye-color);
-            transition: all var(--transition-speed) cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            position: relative;
-        }
+  /* ===== Scanlines + vignette overlay ===== */
+  #overlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 50;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,.18) 0px, rgba(0,0,0,.18) 1px,
+      transparent 1px, transparent 4px);
+    mix-blend-mode: multiply;
+  }
+  #vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 51;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.75) 100%);
+  }
+  /* subtle screen flicker */
+  #flicker {
+    position: fixed; inset: 0; pointer-events: none; z-index: 52;
+    background: rgba(0,255,235,.02);
+    animation: flick 6s infinite;
+  }
+  @keyframes flick {
+    0%,100% { opacity: .3; } 48% { opacity: .3; } 50% { opacity: 1; } 52% { opacity: .3; }
+  }
 
-        /* مردمک (بخش تیره وسط چشم) */
-        .pupil {
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            background-color: var(--bg-color);
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            transition: all 0.1s ease-out;
-        }
+  /* ===== UI hints (Persian, RTL) ===== */
+  #hints {
+    position: fixed;
+    bottom: 18px; left: 0; right: 0;
+    text-align: center;
+    direction: rtl;
+    z-index: 60;
+    color: rgba(120, 230, 220, .55);
+    font-family: Tahoma, "Segoe UI", sans-serif;
+    font-size: clamp(12px, 2vmin, 16px);
+    letter-spacing: .5px;
+    pointer-events: none;
+  }
+  #hints span { margin: 0 10px; }
 
-        /* --- حالت‌های مختلف (Expressions) --- */
-
-        /* ۱. عادی (Normal) - دایره‌ای */
-        .eye.normal { border-radius: 50%; }
-
-        /* ۲. خوشحال (Happy) - شبیه کمان یا ^ ^ */
-        .eye.happy {
-            border-radius: 50% 50% 0 0 / 100% 100% 0 0;
-            transform: rotate(45deg); /* برای ایجاد حالت کج */
-        }
-        .eye.happy.left { transform: rotate(45deg) translateY(20px); }
-        .eye.happy.right { transform: rotate(-45deg) translateY(20px); }
-        /* در حالت خوشحال، ما نمی‌خواهیم مردمک باشد، بلکه چشم خودش شکل بگیرد */
-        .eye.happy .pupil { display: none; }
-
-        /* ۳. عصبانی (Angry) - زاویه داشتن از بالا */
-        .eye.angry {
-            border-radius: 20% 20% 50% 50%;
-            clip-path: polygon(0% 0%, 100% 0%, 100% 70%, 50% 100%, 0% 70%);
-        }
-
-        /* ۴. خواب‌آلود (Sleepy) - خطی */
-        .eye.sleepy {
-            height: 30px;
-            border-radius: 10px;
-        }
-
-        /* ۵. متعجب (Surprised) - بسیار بزرگ و گرد */
-        .eye.surprised {
-            width: 140px;
-            height: 140px;
-            border-radius: 50%;
-            border: 4px solid var(--eye-color);
-            background-color: transparent;
-        }
-        .eye.surprised .pupil {
-            width: 20px;
-            height: 20px;
-            background-color: var(--eye-color);
-        }
-
-        /* ۶. غمگین (Sad) - Droopy */
-        .eye.sad {
-            border-radius: 50% 50% 20% 20%;
-            transform: translateY(10px);
-        }
-
-        /* راهنما */
-        .instructions {
-            position: absolute;
-            bottom: 20px;
-            color: #555;
-            text-align: center;
-            direction: rtl;
-            font-size: 0.9rem;
-        }
-    </style>
+  /* Mood label */
+  #mood {
+    position: fixed;
+    top: 24px; left: 0; right: 0;
+    text-align: center;
+    direction: rtl;
+    z-index: 60;
+    color: #6ffbe9;
+    font-family: Tahoma, "Segoe UI", sans-serif;
+    font-size: clamp(18px, 4vmin, 32px);
+    text-shadow: 0 0 14px rgba(0,255,235,.8), 0 0 40px rgba(0,255,235,.35);
+    opacity: 0;
+    transition: opacity .35s ease;
+    pointer-events: none;
+  }
+  #mood.show { opacity: 1; }
+</style>
 </head>
 <body>
+  <div id="stage">
+    <div class="eye" id="eyeL"><div class="pupil"></div><div class="lid"></div></div>
+    <div class="eye" id="eyeR"><div class="pupil"></div><div class="lid"></div></div>
+  </div>
+  <div id="overlay"></div>
+  <div id="vignette"></div>
+  <div id="flicker"></div>
+  <div id="mood"></div>
+  <div id="hints"><span>کلیک/لمس = تغییر حالت</span><span>•</span><span>حرکت = دنبال کردن</span></div>
 
-    <div class="face-container">
-        <div id="eye-left" class="eye normal">
-            <div class="pupil"></div>
-        </div>
-        <div id="eye-right" class="eye normal">
-            <div class="pupil"></div>
-        </div>
-    </div>
+<script>
+(function () {
+  "use strict";
+  /* ================= State ================= */
+  var eyes = [document.getElementById("eyeL"), document.getElementById("eyeR")];
+  var pupils = eyes.map(function (e) { return e.querySelector(".pupil"); });
+  var moodEl = document.getElementById("mood");
 
-    <div class="instructions">
-        کلیک کنید تا حالت تغییر کند • حرکت دهید تا دنبال کند
-    </div>
+  var mouse = { x: innerWidth / 2, y: innerHeight / 3 };
+  var cur = { x: 0, y: 0 };          // current pupil offset (px)
+  var mood = "normal";
+  var moodTimer = null;
 
-    <script>
-        const leftEye = document.getElementById('eye-left');
-        const rightEye = document.getElementById('eye-right');
-        const pupils = document.querySelectorAll('.pupil');
-        
-        let currentMood = 'normal';
-        const moods = ['normal', 'happy', 'angry', 'sleepy', 'surprised', 'sad'];
-        let moodIndex = 0;
+  var MOODS = ["normal", "happy", "sad", "angry", "surprised", "sleepy"];
+  var MOOD_FA = {
+    normal: "عادی", happy: "خوشحال", sad: "غمگین",
+    angry: "عصبانی", surprised: "متعجب", sleepy: "خواب‌آلود"
+  };
 
-        // تابع تغییر حالت
-        function changeMood() {
-            moodIndex = (moodIndex + 1) % moods.length;
-            currentMood = moods[moodIndex];
-            
-            // حذف تمام کلاس‌های قبلی و اضافه کردن کلاس جدید
-            [leftEye, rightEye].forEach(eye => {
-                eye.className = 'eye ' + currentMood;
-            });
+  /* ================= Pointer tracking ================= */
+  function setPointer(x, y) { mouse.x = x; mouse.y = y; }
+  addEventListener("mousemove", function (e) { setPointer(e.clientX, e.clientY); });
+  addEventListener("touchmove", function (e) {
+    if (e.touches.length) setPointer(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
 
-            // افکت لرزش کوچک هنگام تغییر حالت
-            document.body.style.transform = 'scale(1.02)';
-            setTimeout(() => document.body.style.transform = 'scale(1)', 100);
-        }
+  /* ================= Mood handling ================= */
+  function showMood() {
+    moodEl.textContent = MOOD_FA[mood];
+    moodEl.classList.add("show");
+    clearTimeout(moodTimer);
+    moodTimer = setTimeout(function () { moodEl.classList.remove("show"); }, 1400);
+  }
 
-        // گوش دادن به کلیک/لمس
-        window.addEventListener('click', changeMood);
-        window.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // جلوگیری از اسکرول هنگام لمس
-            changeMood();
-        }, { passive: false });
+  function cycleMood() {
+    var i = MOODS.indexOf(mood);
+    mood = MOODS[(i + 1) % MOODS.length];
+    applyMood();
+    showMood();
+  }
 
-        // تابع دنبال کردن ماوس/لمس
-        window.addEventListener('mousemove', (e) => {
-            if (currentMood === 'happy' || currentMood === 'sleepy') return; // در این حالت‌ها حرکت چشم را محدود کن
+  function applyMood() {
+    // Reset shape first
+    pupils.forEach(function (p) { p.style.width = ""; p.style.height = ""; p.style.borderRadius = ""; p.style.opacity = ""; });
+    eyes.forEach(function (e) { e.style.borderRadius = ""; e.style.transform = ""; });
 
-            const x = e.clientX;
-            const y = e.clientY;
-
-            pupils.forEach(pupil => {
-                // محاسبه فاصله برای حرکت نرم
-                const rect = pupil.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-
-                const angle = Math.atan2(y - centerY, x - centerX);
-                const distance = Math.min(25, Math.hypot(x - centerX, y - centerY) / 10);
-
-                const moveX = Math.cos(angle) * distance;
-                const moveY = Math.sin(angle) * distance;
-
-                pupil.style.transform = `translate(calc(-50% + ${moveX}px), calc(-50% + ${moveY}px))`;
-            });
+    switch (mood) {
+      case "happy":   // ^ ^ : curved eyes
+        eyes.forEach(function (e) { e.style.borderRadius = "50% 50% 8% 8%"; });
+        pupils.forEach(function (p) { p.style.height = "26%"; p.style.width = "70%"; p.style.borderRadius = "50% 50% 10% 10%"; });
+        break;
+      case "sad":     // droopy, small, lowered
+        eyes.forEach(function (e, i) {
+          e.style.borderRadius = "50%";
+          e.style.transform = "rotate(" + (i ? 14 : -14) + "deg)";
         });
+        pupils.forEach(function (p) { p.style.width = "42%"; p.style.height = "42%"; p.style.opacity = ".85"; });
+        break;
+      case "angry":   // slanted lids
+        eyes.forEach(function (e, i) {
+          e.style.borderRadius = "50% 50% 20% 20%";
+          e.style.transform = "rotate(" + (i ? -12 : 12) + "deg)";
+        });
+        pupils.forEach(function (p) { p.style.width = "50%"; p.style.height = "50%"; });
+        break;
+      case "surprised": // wide
+        eyes.forEach(function (e) { e.style.borderRadius = "50%"; });
+        pupils.forEach(function (p) { p.style.width = "72%"; p.style.height = "72%"; });
+        break;
+      case "sleepy":  // half closed + dim
+        eyes.forEach(function (e) { e.style.borderRadius = "40%"; });
+        pupils.forEach(function (p) { p.style.opacity = ".4"; });
+        eyes.forEach(function (e) { e.querySelector(".lid").style.height = "55%"; });
+        break;
+      default: break;
+    }
+  }
 
-        // پلک زدن خودکار (Automatic Blinking)
-        function blink() {
-            const blinkDuration = Math.random() * 200 + 100;
-            [leftEye, rightEye].forEach(eye => {
-                eye.style.transform += ' scaleY(0.1)'; // پلک زدن با تغییر ارتفاع
-                setTimeout(() => {
-                    eye.style.transform = eye.style.transform.replace(' scaleY(0.1)', ' scaleY(1)');
-                }, blinkDuration);
-            });
+  addEventListener("click", cycleMood);
+  addEventListener("keydown", cycleMood);
+  addEventListener("touchstart", function (e) { cycleMood(); }, { passive: true });
 
-            // زمان‌بندی پلک بعدی
-            setTimeout(blink, Math.random() * 4000 + 2000);
-        }
+  /* ================= Blinking ================= */
+  function blinkOnce() {
+    eyes.forEach(function (e) { e.classList.add("blink"); });
+    setTimeout(function () { eyes.forEach(function (e) { e.classList.remove("blink"); }); }, 130);
+  }
+  function doubleBlink() {
+    blinkOnce();
+    setTimeout(blinkOnce, 280);
+  }
+  function wink() {
+    var e = eyes[Math.random() < .5 ? 0 : 1];
+    e.classList.add("blink");
+    setTimeout(function () { e.classList.remove("blink"); }, 500);
+  }
 
-        // شروع پلک زدن
-        blink();
+  (function blinkLoop() {
+    var wait = 2200 + Math.random() * 3500;
+    setTimeout(function () {
+      if (mood !== "sleepy") {
+        if (Math.random() < .18) doubleBlink();
+        else if (Math.random() < .12) wink();
+        else blinkOnce();
+      }
+      blinkLoop();
+    }, wait);
+  })();
 
-    </script>
+  /* ================= Idle behaviors ================= */
+  // Occasional glance around (brief auto target override)
+  var glance = { active: false, x: 0, y: 0 };
+  (function idleLoop() {
+    var wait = 3000 + Math.random() * 5000;
+    setTimeout(function () {
+      var r = Math.random();
+      if (r < .5) {
+        // glance
+        var a = Math.random() * Math.PI * 2;
+        glance.active = true;
+        glance.x = Math.cos(a) * innerWidth * .12;
+        glance.y = Math.sin(a) * innerHeight * .1;
+        setTimeout(function () { glance.active = false; }, 700 + Math.random() * 900);
+      } else if (r < .75) {
+        // brief happy squint
+        var prev = mood;
+        mood = "happy";
+        applyMood();
+        setTimeout(function () { mood = prev; applyMood(); }, 900 + Math.random() * 800);
+      }
+      idleLoop();
+    }, wait);
+  })();
+
+  /* ================= Pupil follow (smooth) ================= */
+  function maxOffset(eye) {
+    var r = eye.getBoundingClientRect();
+    return { x: r.width * .16, y: r.height * .16 };
+  }
+  function tick() {
+    var tx = 0, ty = 0;
+    if (glance.active) {
+      tx = glance.x; ty = glance.y;
+    } else {
+      var dx = mouse.x - innerWidth / 2;
+      var dy = mouse.y - innerHeight / 2;
+      var d = Math.hypot(dx, dy) || 1;
+      var strength = Math.min(1, d / (innerWidth * .35));
+      var m = maxOffset(eyes[0]);
+      tx = (dx / d) * m.x * strength;
+      ty = (dy / d) * m.y * strength;
+    }
+    // sleepy pupils drift downward
+    if (mood === "sleepy") ty += 8;
+
+    // smooth easing
+    cur.x += (tx - cur.x) * 0.08;
+    cur.y += (ty - cur.y) * 0.08;
+
+    pupils.forEach(function (p) {
+      p.style.transform = "translate(calc(-50% + " + cur.x.toFixed(1) + "px), calc(-50% + " + cur.y.toFixed(1) + "px))";
+    });
+    requestAnimationFrame(tick);
+  }
+  tick();
+
+  // sleepy breathing: slow lid movement
+  setInterval(function () {
+    if (mood !== "sleepy") return;
+    eyes.forEach(function (e) {
+      var lid = e.querySelector(".lid");
+      lid.style.transition = "height 1.4s ease";
+      lid.style.height = (45 + Math.random() * 20) + "%";
+      setTimeout(function () { lid.style.height = "55%"; }, 1400);
+    });
+  }, 3200);
+})();
+</script>
 </body>
 </html>
