@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMO Robot Eyes Pro</title>
+    <style>
+        :root {
+            --eye-color: #00f2ff; /* رنگ نئونی فیروزه‌ای */
+            --bg-color: #050505;
+            --transition-speed: 0.4s;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* لایه افکت صفحه ربات (Scanlines) */
+        body::before {
+            content: " ";
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* ظرف اصلی چشم‌ها */
+        .face-container {
+            display: flex;
+            gap: 80px;
+            z-index: 5;
+        }
+
+        /* استایل پایه چشم */
+        .eye {
+            width: 120px;
+            height: 120px;
+            background-color: var(--eye-color);
+            box-shadow: 0 0 30px var(--eye-color), 0 0 60px var(--eye-color);
+            transition: all var(--transition-speed) cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+        }
+
+        /* مردمک (بخش تیره وسط چشم) */
+        .pupil {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background-color: var(--bg-color);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.1s ease-out;
+        }
+
+        /* --- حالت‌های مختلف (Expressions) --- */
+
+        /* ۱. عادی (Normal) - دایره‌ای */
+        .eye.normal { border-radius: 50%; }
+
+        /* ۲. خوشحال (Happy) - شبیه کمان یا ^ ^ */
+        .eye.happy {
+            border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+            transform: rotate(45deg); /* برای ایجاد حالت کج */
+        }
+        .eye.happy.left { transform: rotate(45deg) translateY(20px); }
+        .eye.happy.right { transform: rotate(-45deg) translateY(20px); }
+        /* در حالت خوشحال، ما نمی‌خواهیم مردمک باشد، بلکه چشم خودش شکل بگیرد */
+        .eye.happy .pupil { display: none; }
+
+        /* ۳. عصبانی (Angry) - زاویه داشتن از بالا */
+        .eye.angry {
+            border-radius: 20% 20% 50% 50%;
+            clip-path: polygon(0% 0%, 100% 0%, 100% 70%, 50% 100%, 0% 70%);
+        }
+
+        /* ۴. خواب‌آلود (Sleepy) - خطی */
+        .eye.sleepy {
+            height: 30px;
+            border-radius: 10px;
+        }
+
+        /* ۵. متعجب (Surprised) - بسیار بزرگ و گرد */
+        .eye.surprised {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 4px solid var(--eye-color);
+            background-color: transparent;
+        }
+        .eye.surprised .pupil {
+            width: 20px;
+            height: 20px;
+            background-color: var(--eye-color);
+        }
+
+        /* ۶. غمگین (Sad) - Droopy */
+        .eye.sad {
+            border-radius: 50% 50% 20% 20%;
+            transform: translateY(10px);
+        }
+
+        /* راهنما */
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            color: #555;
+            text-align: center;
+            direction: rtl;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="face-container">
+        <div id="eye-left" class="eye normal">
+            <div class="pupil"></div>
+        </div>
+        <div id="eye-right" class="eye normal">
+            <div class="pupil"></div>
+        </div>
+    </div>
+
+    <div class="instructions">
+        کلیک کنید تا حالت تغییر کند • حرکت دهید تا دنبال کند
+    </div>
+
+    <script>
+        const leftEye = document.getElementById('eye-left');
+        const rightEye = document.getElementById('eye-right');
+        const pupils = document.querySelectorAll('.pupil');
+        
+        let currentMood = 'normal';
+        const moods = ['normal', 'happy', 'angry', 'sleepy', 'surprised', 'sad'];
+        let moodIndex = 0;
+
+        // تابع تغییر حالت
+        function changeMood() {
+            moodIndex = (moodIndex + 1) % moods.length;
+            currentMood = moods[moodIndex];
+            
+            // حذف تمام کلاس‌های قبلی و اضافه کردن کلاس جدید
+            [leftEye, rightEye].forEach(eye => {
+                eye.className = 'eye ' + currentMood;
+            });
+
+            // افکت لرزش کوچک هنگام تغییر حالت
+            document.body.style.transform = 'scale(1.02)';
+            setTimeout(() => document.body.style.transform = 'scale(1)', 100);
+        }
+
+        // گوش دادن به کلیک/لمس
+        window.addEventListener('click', changeMood);
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // جلوگیری از اسکرول هنگام لمس
+            changeMood();
+        }, { passive: false });
+
+        // تابع دنبال کردن ماوس/لمس
+        window.addEventListener('mousemove', (e) => {
+            if (currentMood === 'happy' || currentMood === 'sleepy') return; // در این حالت‌ها حرکت چشم را محدود کن
+
+            const x = e.clientX;
+            const y = e.clientY;
+
+            pupils.forEach(pupil => {
+                // محاسبه فاصله برای حرکت نرم
+                const rect = pupil.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                const angle = Math.atan2(y - centerY, x - centerX);
+                const distance = Math.min(25, Math.hypot(x - centerX, y - centerY) / 10);
+
+                const moveX = Math.cos(angle) * distance;
+                const moveY = Math.sin(angle) * distance;
+
+                pupil.style.transform = `translate(calc(-50% + ${moveX}px), calc(-50% + ${moveY}px))`;
+            });
+        });
+
+        // پلک زدن خودکار (Automatic Blinking)
+        function blink() {
+            const blinkDuration = Math.random() * 200 + 100;
+            [leftEye, rightEye].forEach(eye => {
+                eye.style.transform += ' scaleY(0.1)'; // پلک زدن با تغییر ارتفاع
+                setTimeout(() => {
+                    eye.style.transform = eye.style.transform.replace(' scaleY(0.1)', ' scaleY(1)');
+                }, blinkDuration);
+            });
+
+            // زمان‌بندی پلک بعدی
+            setTimeout(blink, Math.random() * 4000 + 2000);
+        }
+
+        // شروع پلک زدن
+        blink();
+
+    </script>
+</body>
+</html>
