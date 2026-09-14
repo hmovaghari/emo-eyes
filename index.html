@@ -132,6 +132,23 @@
     pointer-events: none;
   }
   #mood.show { opacity: 1; }
+  #camera-controls {
+    position: fixed; top: 12px; right: 12px; z-index: 65;
+    max-width: min(280px, 65vw); color: #92cfc8;
+    font: 12px/1.8 Tahoma, sans-serif;
+  }
+  #camera-toggle {
+    border: 1px solid #28766e; border-radius: 12px;
+    padding: 9px 14px; background: #071d1b; color: #8ffff0;
+    font: inherit; cursor: pointer; touch-action: manipulation;
+  }
+  #camera-toggle:focus-visible { outline: 2px solid #8ffff0; outline-offset: 3px; }
+  #camera-status { margin: 6px 0; }
+  #camera-preview {
+    display: none; width: 120px; border-radius: 10px;
+    transform: scaleX(-1); border: 1px solid #28766e;
+  }
+  #camera-preview.active { display: block; }
 </style>
 </head>
 <body>
@@ -143,6 +160,11 @@
   <div id="vignette"></div>
   <div id="flicker"></div>
   <div id="mood"></div>
+  <div id="camera-controls">
+    <button id="camera-toggle" type="button" aria-pressed="false">روشن کردن دوربین</button>
+    <p id="camera-status" role="status">واکنش به حرکت • پردازش فقط روی دستگاه شما</p>
+    <video id="camera-preview" autoplay muted playsinline aria-label="پیش‌نمایش آینه‌ای دوربین"></video>
+  </div>
   <div id="hints"><span>کلیک/لمس = تغییر حالت</span><span>•</span><span>حرکت = دنبال کردن</span></div>
 
 <script>
@@ -165,11 +187,112 @@
   };
 
   /* ================= Pointer tracking ================= */
-  function setPointer(x, y) { mouse.x = x; mouse.y = y; }
+  var lastPointer = 0;
+  function setPointer(x, y) { mouse.x = x; mouse.y = y; lastPointer = performance.now(); }
   addEventListener("mousemove", function (e) { setPointer(e.clientX, e.clientY); });
   addEventListener("touchmove", function (e) {
     if (e.touches.length) setPointer(e.touches[0].clientX, e.touches[0].clientY);
   }, { passive: true });
+
+  /* Compare small grayscale frames; no images leave this page. */
+  var cameraButton = document.getElementById("camera-toggle");
+  var cameraStatus = document.getElementById("camera-status");
+  var video = document.getElementById("camera-preview");
+  var canvas = document.createElement("canvas");
+  canvas.width = 80; canvas.height = 60;
+  var context = canvas.getContext("2d", { willReadFrequently: true });
+  var stream = null, cameraRequest = 0, cameraTimer = null, previousFrame = null;
+  var cameraTarget = { x: .5, y: .5, time: -Infinity };
+
+  function stopCamera(message) {
+    cameraRequest++;
+    clearInterval(cameraTimer);
+    cameraTimer = null;
+    if (stream) stream.getTracks().forEach(function (track) { track.stop(); });
+    stream = null;
+    video.srcObject = null;
+    video.classList.remove("active");
+    previousFrame = null;
+    cameraTarget.time = -Infinity;
+    cameraButton.textContent = "روشن کردن دوربین";
+    cameraButton.setAttribute("aria-pressed", "false");
+    cameraStatus.textContent = message || "دوربین خاموش است";
+  }
+
+  function readMotion() {
+    if (video.readyState < 2) return;
+    context.drawImage(video, 0, 0, 80, 60);
+    var pixels = context.getImageData(0, 0, 80, 60).data;
+    var frame = new Float32Array(4800), meanChange = 0;
+    for (var i = 0; i < frame.length; i++) {
+      frame[i] = pixels[i * 4] * .299 + pixels[i * 4 + 1] * .587 + pixels[i * 4 + 2] * .114;
+      if (previousFrame) meanChange += frame[i] - previousFrame[i];
+    }
+    if (previousFrame) {
+      meanChange /= frame.length;
+      var weight = 0, x = 0, y = 0, changed = 0;
+      for (var j = 0; j < frame.length; j++) {
+        // Ignore sensor noise and uniform exposure changes.
+        var delta = Math.abs(frame[j] - previousFrame[j] - meanChange);
+        if (delta < 22) continue;
+        changed++;
+        weight += delta;
+        x += (j % 80) * delta;
+        y += Math.floor(j / 80) * delta;
+      }
+      if (changed > 24 && changed < frame.length * .65) {
+        cameraTarget.x = 1 - x / weight / 79;
+        cameraTarget.y = y / weight / 59;
+        cameraTarget.time = performance.now();
+      }
+    }
+    previousFrame = frame;
+  }
+
+  cameraButton.addEventListener("click", async function () {
+    if (stream || cameraTimer === "pending") { stopCamera(); return; }
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      cameraStatus.textContent = "برای استفاده از دوربین، صفحه را با HTTPS یا localhost باز کنید.";
+      return;
+    }
+    var request = ++cameraRequest;
+    cameraTimer = "pending";
+    cameraButton.textContent = "لغو درخواست دوربین";
+    cameraStatus.textContent = "در انتظار اجازهٔ دسترسی به دوربین…";
+    try {
+      var acquired = await navigator.mediaDevices.getUserMedia({
+        audio: false, video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }
+      });
+      if (request !== cameraRequest) {
+        acquired.getTracks().forEach(function (track) { track.stop(); });
+        return;
+      }
+      stream = acquired;
+      stream.getVideoTracks()[0].addEventListener("ended", function () {
+        if (request === cameraRequest) stopCamera("اتصال دوربین قطع شد؛ دوباره روشن کنید.");
+      });
+      video.srcObject = stream;
+      await video.play();
+      if (request !== cameraRequest) return;
+      video.classList.add("active");
+      cameraButton.textContent = "خاموش کردن دوربین";
+      cameraButton.setAttribute("aria-pressed", "true");
+      cameraStatus.textContent = "دوربین روشن است؛ دستتان را حرکت دهید تا چشم‌ها دنبال کنند.";
+      cameraTimer = setInterval(readMotion, 80);
+    } catch (error) {
+      if (request !== cameraRequest) return;
+      var messages = {
+        NotAllowedError: "اجازهٔ دوربین داده نشد؛ دسترسی را در تنظیمات مرورگر فعال کنید.",
+        NotFoundError: "دوربینی پیدا نشد؛ اتصال دوربین را بررسی کنید.",
+        NotReadableError: "دوربین در دسترس نیست؛ برنامه‌های دیگرِ استفاده‌کننده را ببندید."
+      };
+      stopCamera(messages[error.name] || "راه‌اندازی دوربین ناموفق بود؛ دوباره تلاش کنید.");
+    }
+  });
+  addEventListener("pagehide", function () { stopCamera(); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) stopCamera("دوربین با خروج از صفحه خاموش شد؛ برای ادامه دوباره روشن کنید.");
+  });
 
   /* ================= Mood handling ================= */
   function showMood() {
@@ -190,6 +313,7 @@
     // Reset shape first
     pupils.forEach(function (p) { p.style.width = ""; p.style.height = ""; p.style.borderRadius = ""; p.style.opacity = ""; });
     eyes.forEach(function (e) { e.style.borderRadius = ""; e.style.transform = ""; });
+    eyes.forEach(function (e) { e.querySelector(".lid").style.height = ""; e.querySelector(".lid").style.transition = ""; });
 
     switch (mood) {
       case "happy":   // ^ ^ : curved eyes
@@ -223,9 +347,12 @@
     }
   }
 
-  addEventListener("click", cycleMood);
-  addEventListener("keydown", cycleMood);
-  addEventListener("touchstart", function (e) { cycleMood(); }, { passive: true });
+  addEventListener("click", function (e) {
+    if (!e.target.closest("#camera-controls")) cycleMood();
+  });
+  addEventListener("keydown", function (e) {
+    if (!e.target.closest("#camera-controls") && !e.repeat) cycleMood();
+  });
 
   /* ================= Blinking ================= */
   function blinkOnce() {
@@ -286,7 +413,11 @@
   }
   function tick() {
     var tx = 0, ty = 0;
-    if (glance.active) {
+    if (stream && performance.now() - cameraTarget.time < 1800 && performance.now() - lastPointer > 1000) {
+      var cameraOffset = maxOffset(eyes[0]);
+      tx = (cameraTarget.x * 2 - 1) * cameraOffset.x;
+      ty = (cameraTarget.y * 2 - 1) * cameraOffset.y;
+    } else if (glance.active) {
       tx = glance.x; ty = glance.y;
     } else {
       var dx = mouse.x - innerWidth / 2;
@@ -318,7 +449,7 @@
       var lid = e.querySelector(".lid");
       lid.style.transition = "height 1.4s ease";
       lid.style.height = (45 + Math.random() * 20) + "%";
-      setTimeout(function () { lid.style.height = "55%"; }, 1400);
+      setTimeout(function () { if (mood === "sleepy") lid.style.height = "55%"; }, 1400);
     });
   }, 3200);
 })();
