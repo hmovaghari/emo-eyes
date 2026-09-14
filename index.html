@@ -144,6 +144,11 @@
   }
   #camera-toggle:focus-visible { outline: 2px solid #8ffff0; outline-offset: 3px; }
   #camera-status { margin: 6px 0; }
+  #camera-controls { max-height: 42vh; overflow-y: auto; touch-action: pan-y; }
+  #gesture-status { color: #b3ffed; margin: 5px 0; }
+  #gesture-guide { max-width: 270px; }
+  #gesture-guide summary { cursor: pointer; }
+  #gesture-guide p { margin: 5px 0; }
   #camera-preview {
     display: none; width: 120px; border-radius: 10px;
     transform: scaleX(-1); border: 1px solid #28766e;
@@ -160,6 +165,9 @@
   }
   .pupil::after { display: none; }
   .pupil svg { width: 100%; height: 100%; overflow: visible; }
+  .pupil svg { transform: scaleY(1); opacity: 1; transition: transform .22s ease-out, opacity .18s ease; }
+  #stage.changing-mood .pupil svg { transform: scaleY(.06); opacity: .2; transition-duration: .16s; }
+  @media (prefers-reduced-motion: reduce) { .pupil svg { transition: none; } }
   .expression-art {
     transform-origin: 50px 50px;
     filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 9px currentColor);
@@ -246,6 +254,19 @@
   <div id="camera-controls">
     <button id="camera-toggle" type="button" aria-pressed="false">روشن کردن دوربین</button>
     <p id="camera-status" role="status">واکنش به حرکت • پردازش فقط روی دستگاه شما</p>
+    <label for="motion-sensitivity">حساسیت حرکت</label>
+    <input id="motion-sensitivity" type="range" min="1" max="5" value="3" aria-label="حساسیت حرکت">
+    <progress id="motion-level" max="100" value="0" aria-label="شدت حرکت تشخیص‌داده‌شده" style="display:block;width:120px;accent-color:#6ffbe9"></progress>
+    <label><input id="smart-gestures" type="checkbox" checked> واکنش هوشمند به دست و صورت</label>
+    <p id="gesture-status" role="status">با روشن کردن دوربین، تشخیص ژست فعال می‌شود.</p>
+    <p id="local-server-help" hidden style="color:#ffd098">صفحه مستقیم از فایل باز شده است؛ تشخیص ژست اینجا کار نمی‌کند. فایل <b dir="ltr">Start-EMO.cmd</b> کنار index.html را دابل‌کلیک کن و دوربین را در صفحهٔ جدید روشن کن. پنجرهٔ اجرا را باز نگه دار.</p>
+    <p id="vision-feedback" style="margin:4px 0;color:#a0b8b3;font-size:11px"></p>
+    <details id="gesture-guide">
+      <summary>راهنمای ژست‌ها</summary>
+      <p>لب‌ها را مثل بوس جمع کن یا 🤟 نشان بده ← عاشق<br>مشت ✊ یا 👎 ← عصبانی<br>👍 یا لبخند ← خوشحال<br>✌️ ← هیجان‌زده<br>کف دست باز 🖐️ ← شیطون<br>اشاره به بالا ☝️ ← در حال فکر<br>چشمک ← شیطون</p>
+      <p>دست یا صورت را روبه‌روی دوربین، با نور کافی، حدود نیم‌ثانیه ثابت نگه دار. تشخیص بوس تخمینی است. انتخاب دستی تا ۳ ثانیه اولویت دارد.</p>
+      <p>پردازش روی دستگاه است؛ تصویر ذخیره یا ارسال نمی‌شود.</p>
+    </details>
     <video id="camera-preview" autoplay muted playsinline aria-label="پیش‌نمایش آینه‌ای دوربین"></video>
   </div>
   <div id="mood-picker" role="group" aria-label="انتخاب حالت چشم‌ها">
@@ -278,6 +299,10 @@
   var cur = { x: 0, y: 0 };          // current pupil offset (px)
   var mood = "normal";
   var moodTimer = null;
+  var selectedMood = 'normal', reactionTimer = null, reactionCooldown = 0;
+  var manualUntil = 0, transitionTimer = null, transitionVersion = 0;
+  var reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  var stage = document.getElementById('stage');
 
   var MOODS = ["normal", "happy", "sad", "angry", "surprised", "sleepy", "love", "suspicious", "dizzy", "cheeky", "bored", "excited", "shy", "thinking"];
   var MOOD_FA = {
@@ -304,6 +329,7 @@
   var cameraTarget = { x: .5, y: .5, time: -Infinity };
 
   function stopCamera(message) {
+    stopGestureRecognition();
     cameraRequest++;
     clearInterval(cameraTimer);
     cameraTimer = null;
@@ -313,9 +339,41 @@
     video.classList.remove("active");
     previousFrame = null;
     cameraTarget.time = -Infinity;
+    motionEnergy = 0;
+    gentleFrames = 0;
+    motionLevel.value = 0;
+    reactionCooldown = 0;
+    clearTimeout(reactionTimer);
+    if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
     cameraButton.textContent = "روشن کردن دوربین";
     cameraButton.setAttribute("aria-pressed", "false");
     cameraStatus.textContent = message || "دوربین خاموش است";
+  }
+
+  var motionEnergy = 0, cameraWarmup = 0, gentleFrames = 0;
+  var motionLevel = document.getElementById('motion-level');
+  var motionSensitivity = document.getElementById('motion-sensitivity');
+  function reactToMotion(energy, now) {
+    var gain = Number(motionSensitivity.value) / 3;
+    energy *= gain;
+    motionLevel.value = Math.min(100, Math.round(energy * 2500));
+    var sudden = energy > .018;
+    gentleFrames = energy > .0015 ? gentleFrames + 1 : 0;
+    motionEnergy += (energy - motionEnergy) * .3;
+    // Semantic gestures own emotions while ready; motion still guides the gaze.
+    if (gestureState === 'ready' || gestureState === 'loading') return;
+    if ((!sudden && gentleFrames < 5) || now < cameraWarmup || now < manualUntil || now < reactionCooldown) return;
+    reactionCooldown = now + 3200;
+    gentleFrames = 0;
+    clearTimeout(reactionTimer);
+    mood = sudden ? 'surprised' : 'happy';
+    applyMood();
+    showMood();
+    reactionTimer = setTimeout(function () {
+      mood = selectedMood;
+      applyMood();
+      showMood();
+    }, 1800);
   }
 
   function readMotion() {
@@ -333,16 +391,21 @@
       for (var j = 0; j < frame.length; j++) {
         // Ignore sensor noise and uniform exposure changes.
         var delta = Math.abs(frame[j] - previousFrame[j] - meanChange);
-        if (delta < 22) continue;
+        if (delta < 14) continue;
         changed++;
         weight += delta;
         x += (j % 80) * delta;
         y += Math.floor(j / 80) * delta;
       }
-      if (changed > 24 && changed < frame.length * .65) {
-        cameraTarget.x = 1 - x / weight / 79;
-        cameraTarget.y = y / weight / 59;
-        cameraTarget.time = performance.now();
+      if (changed > 12 && changed < frame.length * .65) {
+        var now = performance.now();
+        var blend = now - cameraTarget.time > 1800 ? 1 : .35;
+        cameraTarget.x += (1 - x / weight / 79 - cameraTarget.x) * blend;
+        cameraTarget.y += (y / weight / 59 - cameraTarget.y) * blend;
+        cameraTarget.time = now;
+        reactToMotion(weight / (frame.length * 255), now);
+      } else {
+        reactToMotion(0, performance.now());
       }
     }
     previousFrame = frame;
@@ -360,7 +423,7 @@
     cameraStatus.textContent = "در انتظار اجازهٔ دسترسی به دوربین…";
     try {
       var acquired = await navigator.mediaDevices.getUserMedia({
-        audio: false, video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }
+        audio: false, video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
       });
       if (request !== cameraRequest) {
         acquired.getTracks().forEach(function (track) { track.stop(); });
@@ -376,8 +439,10 @@
       video.classList.add("active");
       cameraButton.textContent = "خاموش کردن دوربین";
       cameraButton.setAttribute("aria-pressed", "true");
-      cameraStatus.textContent = "دوربین روشن است؛ دستتان را حرکت دهید تا چشم‌ها دنبال کنند.";
+      cameraStatus.textContent = "حرکت آرام و پیوسته = خوشحالی؛ حرکت شدید = تعجب. اگر واکنش کم است، حساسیت را بیشتر کنید.";
+      cameraWarmup = performance.now() + 1200;
       cameraTimer = setInterval(readMotion, 80);
+      startGestureRecognition();
     } catch (error) {
       if (request !== cameraRequest) return;
       var messages = {
@@ -393,6 +458,209 @@
     if (document.hidden) stopCamera("دوربین با خروج از صفحه خاموش شد؛ برای ادامه دوباره روشن کنید.");
   });
 
+  /* ================= Local semantic gesture recognition ================= */
+  var smartGestures = document.getElementById('smart-gestures');
+  var gestureStatus = document.getElementById('gesture-status');
+  var visionFeedback = document.getElementById('vision-feedback');
+  var isFilePage = location.protocol === 'file:';
+  document.getElementById('local-server-help').hidden = !isFilePage;
+  if (isFilePage) gestureStatus.textContent = 'برای تشخیص ژست، برنامه را با Start-EMO.cmd اجرا کن.';
+  var gestureState = 'off', gestureWorker = null, gestureInterval = null;
+  var gestureWatchdog = null, gestureBusy = false, gestureVideoTime = -1;
+  var candidateKey = '', candidateSince = 0, candidateLastSeen = 0;
+  var candidateFrames = 0;
+  var acceptedKey = '', acceptedAt = -Infinity;
+  var HAND_REACTIONS = {
+    Closed_Fist: ['angry', 'مشت'], Thumb_Down: ['angry', 'شست رو به پایین'],
+    Thumb_Up: ['happy', 'لایک'], Victory: ['excited', 'علامت پیروزی'],
+    Open_Palm: ['cheeky', 'کف دست باز'], Pointing_Up: ['thinking', 'اشاره به بالا'],
+    ILoveYou: ['love', 'علامت دوستت دارم']
+  };
+
+  // This function runs in a classic worker: WASM inference never blocks the eyes.
+  function visionWorkerMain() {
+    var handModel, faceModel;
+    self.onmessage = async function (event) {
+      var data = event.data;
+      try {
+        if (data.type === 'init') {
+          var vision = await import(data.base + 'vision_bundle.mjs');
+          var files = await vision.FilesetResolver.forVisionTasks(data.base + 'wasm');
+          handModel = await vision.GestureRecognizer.createFromOptions(files, {
+            baseOptions: { modelAssetPath: data.base + 'gesture_recognizer.task', delegate: 'CPU' },
+            runningMode: 'VIDEO', numHands: 2,
+            minHandDetectionConfidence: .6, minHandPresenceConfidence: .6,
+            cannedGesturesClassifierOptions: { scoreThreshold: .65 }
+          });
+          faceModel = await vision.FaceLandmarker.createFromOptions(files, {
+            baseOptions: { modelAssetPath: data.base + 'face_landmarker.task', delegate: 'CPU' },
+            runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true,
+            minFaceDetectionConfidence: .6, minFacePresenceConfidence: .6
+          });
+          self.postMessage({ type: 'ready' });
+        } else if (data.type === 'frame') {
+          try {
+            var hands = handModel.recognizeForVideo(data.bitmap, data.time);
+            var face = faceModel.detectForVideo(data.bitmap, data.time);
+            self.postMessage({ type: 'result', hands: hands.gestures,
+              handCount: hands.landmarks.length, faceCount: face.faceLandmarks.length,
+              capturedAt: data.time,
+              face: face.faceBlendshapes[0] ? face.faceBlendshapes[0].categories : [] });
+          } finally { data.bitmap.close(); }
+        }
+      } catch (error) {
+        self.postMessage({ type: 'error', message: String(error.message || error) });
+      }
+    };
+  }
+
+  function classifyGesture(hands, face) {
+    var scores = {};
+    face.forEach(function (item) { scores[item.categoryName] = item.score; });
+    function score(name) { return scores[name] || 0; }
+    // Puckering with a mostly closed mouth is a kiss-like expression, not emotion inference.
+    if (score('mouthPucker') > .55 && score('jawOpen') < .25 &&
+        Math.max(score('mouthSmileLeft'), score('mouthSmileRight')) < .35) {
+      return { key: 'kiss', mood: 'love', label: 'بوس' };
+    }
+    var best = null;
+    hands.forEach(function (categories) {
+      var top = categories[0];
+      if (top && top.score >= .65 && HAND_REACTIONS[top.categoryName] && (!best || top.score > best.score)) best = top;
+    });
+    if (best) {
+      var reaction = HAND_REACTIONS[best.categoryName];
+      return { key: best.categoryName, mood: reaction[0], label: reaction[1] };
+    }
+    if (Math.min(score('mouthSmileLeft'), score('mouthSmileRight')) > .5) {
+      return { key: 'smile', mood: 'happy', label: 'لبخند' };
+    }
+    var left = score('eyeBlinkLeft'), right = score('eyeBlinkRight');
+    if ((left > .65 && right < .25) || (right > .65 && left < .25)) {
+      return { key: 'wink', mood: 'cheeky', label: 'چشمک' };
+    }
+    return null;
+  }
+
+  function consumeGesture(result, now) {
+    var detected = classifyGesture(result.hands || [], result.face || []);
+    if (!detected) {
+      if (now - candidateLastSeen > 500) {
+        candidateKey = ''; acceptedKey = ''; candidateFrames = 0;
+        gestureStatus.textContent = result.handCount || result.faceCount ?
+          'دست یا صورت دیده شد؛ ژست واضح نیست. روبه‌روی دوربین نگه دار.' :
+          'دست یا صورت پیدا نشد؛ روبه‌روی دوربین و در نور کافی قرار بگیر.';
+      }
+      return;
+    }
+    // A slow CPU may return fewer than two results per second. Do not discard
+    // consecutive matching results just because inference took over 500 ms.
+    if (detected.key !== candidateKey || now - candidateLastSeen > 3000) {
+      candidateKey = detected.key;
+      candidateSince = now;
+      candidateFrames = 0;
+    }
+    candidateFrames++;
+    candidateLastSeen = now;
+    if (now < manualUntil) {
+      gestureStatus.textContent = 'ژست دیده شد؛ انتخاب دستی فعلاً اولویت دارد.';
+      return;
+    }
+    if (candidateFrames < 2 || now - candidateSince < (detected.key === 'wink' ? 220 : 450)) {
+      gestureStatus.textContent = detected.label + '؟ کمی نگه دار…';
+      return;
+    }
+    if (detected.key !== acceptedKey && now - acceptedAt < 700) return;
+    gestureStatus.textContent = detected.label + ' ← ' + MOOD_FA[detected.mood];
+    if (acceptedKey !== detected.key || mood !== detected.mood) {
+      acceptedKey = detected.key; acceptedAt = now;
+      mood = detected.mood; applyMood(); showMood();
+    }
+    // Keep the reaction while the gesture is held; recover after it disappears.
+    clearTimeout(reactionTimer);
+    reactionTimer = setTimeout(function () {
+      acceptedKey = '';
+      mood = selectedMood; applyMood(); showMood();
+    }, 2400);
+  }
+
+  function stopGestureRecognition() {
+    clearInterval(gestureInterval); clearTimeout(gestureWatchdog);
+    if (gestureWorker) gestureWorker.terminate();
+    gestureWorker = null; gestureInterval = null; gestureBusy = false;
+    gestureVideoTime = -1; gestureState = 'off';
+    candidateKey = ''; acceptedKey = ''; candidateLastSeen = 0; acceptedAt = -Infinity;
+    candidateFrames = 0;
+    if (gestureStatus) gestureStatus.textContent = isFilePage ? 'تشخیص ژست در حالت فایل فعال نمی‌شود؛ Start-EMO.cmd را اجرا کن.' : 'تشخیص ژست خاموش است.';
+    if (visionFeedback) visionFeedback.textContent = '';
+  }
+
+  function failGestureRecognition(error) {
+    console.warn('Gesture recognition unavailable:', error);
+    stopGestureRecognition();
+    clearTimeout(reactionTimer);
+    if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
+    gestureState = 'error';
+    gestureStatus.textContent = 'تشخیص ژست بارگذاری نشد؛ فقط حرکت فعال است. صفحه را روی localhost یا HTTPS باز کن و گزینهٔ هوشمند را خاموش و روشن کن.';
+  }
+
+  function startGestureRecognition() {
+    stopGestureRecognition();
+    if (!stream || !smartGestures.checked) return;
+    if (!window.Worker || !window.createImageBitmap || !window.OffscreenCanvas || location.protocol === 'file:') {
+      failGestureRecognition('Worker support and an HTTP(S) server are required'); return;
+    }
+    gestureState = 'loading';
+    gestureStatus.textContent = 'در حال آماده‌سازی تشخیص دست و صورت…';
+    var blobURL = URL.createObjectURL(new Blob(['(' + visionWorkerMain.toString() + ')();'], { type: 'text/javascript' }));
+    try {
+      var worker = new Worker(blobURL);
+      gestureWorker = worker;
+      worker.onerror = function (event) { if (gestureWorker === worker) failGestureRecognition(event.message); };
+      worker.onmessage = function (event) {
+        if (gestureWorker !== worker) return;
+        clearTimeout(gestureWatchdog);
+        if (event.data.type === 'error') { failGestureRecognition(event.data.message); return; }
+        if (event.data.type === 'ready') {
+          gestureState = 'ready';
+          cameraStatus.textContent = 'دوربین روشن است؛ نگاه حرکت را دنبال می‌کند و احساس با ژست تغییر می‌کند.';
+          gestureStatus.textContent = 'آماده؛ یک ژست نشان بده یا لبخند بزن.';
+          gestureInterval = setInterval(async function () {
+            if (gestureBusy || video.readyState < 2 || video.currentTime === gestureVideoTime) return;
+            gestureBusy = true;
+            gestureVideoTime = video.currentTime;
+            gestureWatchdog = setTimeout(function () {
+              if (gestureWorker === worker) failGestureRecognition('Inference timed out');
+            }, 15000);
+            try {
+              var bitmap = await createImageBitmap(video);
+              if (gestureWorker !== worker) { bitmap.close(); return; }
+              worker.postMessage({ type: 'frame', bitmap: bitmap, time: performance.now() }, [bitmap]);
+            } catch (error) { if (gestureWorker === worker) failGestureRecognition(error); }
+          }, 140);
+        } else if (event.data.type === 'result') {
+          gestureBusy = false;
+          var now = performance.now();
+          var elapsed = Math.round(now - event.data.capturedAt);
+          visionFeedback.textContent = 'دست: ' + event.data.handCount + ' • صورت: ' + event.data.faceCount +
+            ' • پردازش: ' + elapsed + ' میلی‌ثانیه';
+          consumeGesture(event.data, now);
+        }
+      };
+      worker.postMessage({ type: 'init', base: new URL('vendor/mediapipe/', location.href).href });
+      gestureWatchdog = setTimeout(function () {
+        if (gestureWorker === worker) failGestureRecognition('Model loading timed out');
+      }, 45000);
+    } catch (error) { failGestureRecognition(error); }
+    finally { URL.revokeObjectURL(blobURL); }
+  }
+  smartGestures.addEventListener('change', function () {
+    clearTimeout(reactionTimer);
+    if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
+    startGestureRecognition();
+    if (stream && !smartGestures.checked) cameraStatus.textContent = 'حالت ساده: حرکت آرام و پیوسته = خوشحالی؛ حرکت شدید = تعجب.';
+  });
+
   /* ================= Mood handling ================= */
   function showMood() {
     moodEl.textContent = MOOD_FA[mood];
@@ -402,10 +670,7 @@
   }
 
   function cycleMood() {
-    var i = MOODS.indexOf(mood);
-    mood = MOODS[(i + 1) % MOODS.length];
-    applyMood();
-    showMood();
+    selectMood(MOODS[(MOODS.indexOf(selectedMood) + 1) % MOODS.length]);
   }
 
   // Shapes use physical left/right coordinates, independent of the page's RTL text.
@@ -425,22 +690,42 @@
     shy: ["M34 45 Q42 37 50 45 L50 61 Q42 69 34 61Z","M50 45 Q58 37 66 45 L66 61 Q58 69 50 61Z"],
     thinking: ["M30 28 Q46 20 61 27 L61 53 Q46 62 30 53Z","M30 39 Q47 30 66 34 L64 49 Q47 56 32 49Z"]
   };
+  function selectMood(next) {
+    clearTimeout(reactionTimer);
+    manualUntil = performance.now() + 3000;
+    selectedMood = next;
+    mood = next;
+    applyMood();
+    showMood();
+  }
   function applyMood() {
-    document.getElementById('stage').dataset.mood = mood;
-    eyes.forEach(function (eye, i) {
-      eye.querySelector('.expression').setAttribute('d', EXPRESSIONS[mood][i]);
-      eye.classList.remove('blink');
-    });
+    var version = ++transitionVersion;
+    var next = mood;
+    clearTimeout(transitionTimer);
     document.querySelectorAll('[data-select-mood]').forEach(function (button) {
-      button.setAttribute('aria-pressed', String(button.dataset.selectMood === mood));
+      button.setAttribute('aria-pressed', String(button.dataset.selectMood === selectedMood));
     });
+    function render() {
+      if (version !== transitionVersion) return;
+      stage.dataset.mood = next;
+      eyes.forEach(function (eye, i) {
+        eye.querySelector('.expression').setAttribute('d', EXPRESSIONS[next][i]);
+        eye.classList.remove('blink');
+      });
+      stage.classList.remove('changing-mood');
+    }
+    // Close the light shapes before swapping incompatible SVG paths, then reopen.
+    if (reducedMotion.matches || !eyes[0].querySelector('.expression').getAttribute('d')) {
+      render();
+    } else {
+      stage.classList.add('changing-mood');
+      transitionTimer = setTimeout(render, 160);
+    }
   }
   document.getElementById('mood-picker').addEventListener('click', function (event) {
     var button = event.target.closest('[data-select-mood]');
     if (!button) return;
-    mood = button.dataset.selectMood;
-    applyMood();
-    showMood();
+    selectMood(button.dataset.selectMood);
   });
   applyMood();
 
@@ -469,7 +754,7 @@
   (function blinkLoop() {
     var wait = 2200 + Math.random() * 3500;
     setTimeout(function () {
-      if (mood !== "sleepy") {
+      if (mood !== "sleepy" && !stage.classList.contains("changing-mood")) {
         if (Math.random() < .18) doubleBlink();
         else if (Math.random() < .12) wink();
         else blinkOnce();
@@ -502,12 +787,18 @@
     var r = eye.getBoundingClientRect();
     return { x: r.width * .16, y: r.height * .16 };
   }
+  var lastTick = performance.now();
   function tick() {
+    var now = performance.now();
+    var elapsed = Math.min(50, now - lastTick);
+    lastTick = now;
     var tx = 0, ty = 0;
     if (stream && performance.now() - cameraTarget.time < 1800 && performance.now() - lastPointer > 1000) {
       var cameraOffset = maxOffset(eyes[0]);
       tx = (cameraTarget.x * 2 - 1) * cameraOffset.x;
       ty = (cameraTarget.y * 2 - 1) * cameraOffset.y;
+    } else if (stream && now - lastPointer > 1000) {
+      tx = 0; ty = 0;
     } else if (glance.active) {
       tx = glance.x; ty = glance.y;
     } else {
@@ -529,7 +820,9 @@
     if (mood === 'suspicious') { tx *= .7; ty *= .3; }
     var ease = ['sleepy', 'bored', 'suspicious'].includes(mood) ? .025 : mood === 'angry' ? .14 : .08;
 
-    // smooth easing
+    if (stream && now - cameraTarget.time < 1000) ease = Math.max(ease, .06 + motionEnergy * .4);
+    ease = 1 - Math.pow(1 - ease, elapsed / (1000 / 60));
+    // Frame-rate independent easing
     cur.x += (tx - cur.x) * ease;
     cur.y += (ty - cur.y) * ease;
 
