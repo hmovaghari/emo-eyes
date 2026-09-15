@@ -1,5 +1,7 @@
 (function () {
   "use strict";
+  EMOI18n.init();
+  var setText = EMOI18n.setText;
   /* ================= State ================= */
   var eyes = [document.getElementById("eyeL"), document.getElementById("eyeR")];
   var pupils = eyes.map(function (e) { return e.querySelector(".pupil"); });
@@ -55,9 +57,9 @@
     reactionCooldown = 0;
     clearTimeout(reactionTimer);
     if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
-    cameraButton.textContent = "روشن کردن دوربین";
+    setText(cameraButton, "روشن کردن دوربین");
     cameraButton.setAttribute("aria-pressed", "false");
-    cameraStatus.textContent = message || "دوربین خاموش است";
+    setText(cameraStatus, message || "دوربین خاموش است");
   }
 
   var motionEnergy = 0, cameraWarmup = 0, gentleFrames = 0;
@@ -126,13 +128,13 @@
   cameraButton.addEventListener("click", async function () {
     if (stream || cameraTimer === "pending") { stopCamera(); return; }
     if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      cameraStatus.textContent = "برای دسترسی به دوربین، نسخهٔ آنلاین برنامه را در مرورگر باز کنید.";
+      setText(cameraStatus, "برای دسترسی به دوربین، نسخهٔ آنلاین برنامه را در مرورگر باز کنید.");
       return;
     }
     var request = ++cameraRequest;
     cameraTimer = "pending";
-    cameraButton.textContent = "لغو درخواست دوربین";
-    cameraStatus.textContent = "در انتظار اجازهٔ دسترسی به دوربین…";
+    setText(cameraButton, "لغو درخواست دوربین");
+    setText(cameraStatus, "در انتظار اجازهٔ دسترسی به دوربین…");
     try {
       var acquired = await navigator.mediaDevices.getUserMedia({
         audio: false, video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
@@ -149,9 +151,9 @@
       await video.play();
       if (request !== cameraRequest) return;
       video.classList.add("active");
-      cameraButton.textContent = "خاموش کردن دوربین";
+      setText(cameraButton, "خاموش کردن دوربین");
       cameraButton.setAttribute("aria-pressed", "true");
-      cameraStatus.textContent = "حرکت آرام و پیوسته = خوشحالی؛ حرکت شدید = تعجب. اگر واکنش کم است، حساسیت را بیشتر کنید.";
+      setText(cameraStatus, "حرکت آرام و پیوسته = خوشحالی؛ حرکت شدید = تعجب. اگر واکنش کم است، حساسیت را بیشتر کنید.");
       cameraWarmup = performance.now() + 1200;
       cameraTimer = setInterval(readMotion, 80);
       startGestureRecognition();
@@ -261,9 +263,9 @@
     if (!detected) {
       if (now - candidateLastSeen > 500) {
         candidateKey = ''; acceptedKey = ''; candidateFrames = 0;
-        gestureStatus.textContent = result.handCount || result.faceCount ?
+        setText(gestureStatus, result.handCount || result.faceCount ?
           'دست یا صورت دیده شد؛ ژست واضح نیست. روبه‌روی دوربین نگه دار.' :
-          'دست یا صورت پیدا نشد؛ روبه‌روی دوربین و در نور کافی قرار بگیر.';
+          'دست یا صورت پیدا نشد؛ روبه‌روی دوربین و در نور کافی قرار بگیر.');
       }
       return;
     }
@@ -277,15 +279,15 @@
     candidateFrames++;
     candidateLastSeen = now;
     if (now < manualUntil) {
-      gestureStatus.textContent = 'ژست دیده شد؛ انتخاب دستی فعلاً اولویت دارد.';
+      setText(gestureStatus, 'ژست دیده شد؛ انتخاب دستی فعلاً اولویت دارد.');
       return;
     }
     if (candidateFrames < 2 || now - candidateSince < (detected.key === 'wink' ? 220 : 450)) {
-      gestureStatus.textContent = detected.label + '؟ کمی نگه دار…';
+      setText(gestureStatus, 'gesturePending', { gesture: detected.label });
       return;
     }
     if (detected.key !== acceptedKey && now - acceptedAt < 700) return;
-    gestureStatus.textContent = detected.label + ' ← ' + MOOD_FA[detected.mood];
+    setText(gestureStatus, 'gestureReaction', { gesture: detected.label, mood: MOOD_FA[detected.mood] });
     if (acceptedKey !== detected.key || mood !== detected.mood) {
       acceptedKey = detected.key; acceptedAt = now;
       mood = detected.mood; applyMood(); showMood();
@@ -305,8 +307,8 @@
     gestureVideoTime = -1; gestureState = 'off';
     candidateKey = ''; acceptedKey = ''; candidateLastSeen = 0; acceptedAt = -Infinity;
     candidateFrames = 0;
-    if (gestureStatus) gestureStatus.textContent = reason || 'تشخیص ژست متوقف شده است.';
-    if (visionFeedback) visionFeedback.textContent = '';
+    if (gestureStatus) setText(gestureStatus, reason || 'تشخیص ژست متوقف شده است.');
+    if (visionFeedback) setText(visionFeedback, '');
   }
 
   function failGestureRecognition(error) {
@@ -315,24 +317,24 @@
     clearTimeout(reactionTimer);
     if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
     gestureState = 'error';
-    gestureStatus.textContent = 'تشخیص ژست بارگذاری نشد؛ دوربین در حالت ساده است. «تلاش دوباره» را بزن.';
+    setText(gestureStatus, 'تشخیص ژست بارگذاری نشد؛ دوربین در حالت ساده است. «تلاش دوباره» را بزن.');
     gestureRetry.hidden = false;
     gestureError.hidden = false;
-    gestureError.querySelector('p').textContent = String(error && error.message || error);
+    setText(gestureError.querySelector('p'), String(error && error.message || error));
   }
 
   function startGestureRecognition() {
     if (gestureState === 'loading' || gestureState === 'ready') return;
     stopGestureRecognition();
-    if (!stream) { gestureStatus.textContent = 'ابتدا دوربین را روشن کن.'; return; }
-    if (!smartGestures.checked) { gestureStatus.textContent = 'گزینهٔ واکنش هوشمند خاموش است؛ برای تشخیص ژست تیک آن را بزن.'; return; }
+    if (!stream) { setText(gestureStatus, 'ابتدا دوربین را روشن کن.'); return; }
+    if (!smartGestures.checked) { setText(gestureStatus, 'گزینهٔ واکنش هوشمند خاموش است؛ برای تشخیص ژست تیک آن را بزن.'); return; }
     if (!window.Worker || !window.createImageBitmap || !window.OffscreenCanvas || location.protocol === 'file:') {
       failGestureRecognition('تشخیص ژست به نسخهٔ آنلاین برنامه و مرورگر سازگار نیاز دارد.'); return;
     }
     gestureState = 'loading';
     gestureRetry.hidden = true;
     gestureError.hidden = true;
-    gestureStatus.textContent = 'در حال آماده‌سازی تشخیص دست و صورت…';
+    setText(gestureStatus, 'در حال آماده‌سازی تشخیص دست و صورت…');
     var blobURL = URL.createObjectURL(new Blob(['(' + visionWorkerMain.toString() + ')();'], { type: 'text/javascript' }));
     try {
       var worker = new Worker(blobURL);
@@ -342,7 +344,7 @@
         if (gestureWorker !== worker) return;
         clearTimeout(gestureWatchdog);
         if (event.data.type === 'progress') {
-          gestureStatus.textContent = event.data.label;
+          setText(gestureStatus, event.data.label);
           gestureWatchdog = setTimeout(function () {
             if (gestureWorker === worker) failGestureRecognition('Model loading timed out after 120 seconds. Check your connection and retry.');
           }, 120000);
@@ -351,8 +353,8 @@
         if (event.data.type === 'error') { failGestureRecognition(event.data.message); return; }
         if (event.data.type === 'ready') {
           gestureState = 'ready';
-          cameraStatus.textContent = 'دوربین روشن است؛ نگاه حرکت را دنبال می‌کند و احساس با ژست تغییر می‌کند.';
-          gestureStatus.textContent = 'آماده؛ یک ژست نشان بده یا لبخند بزن.';
+          setText(cameraStatus, 'دوربین روشن است؛ نگاه حرکت را دنبال می‌کند و احساس با ژست تغییر می‌کند.');
+          setText(gestureStatus, 'آماده؛ یک ژست نشان بده یا لبخند بزن.');
           gestureInterval = setInterval(async function () {
             if (gestureBusy || video.readyState < 2 || video.currentTime === gestureVideoTime) return;
             gestureBusy = true;
@@ -370,8 +372,7 @@
           gestureBusy = false;
           var now = performance.now();
           var elapsed = Math.round(now - event.data.capturedAt);
-          visionFeedback.textContent = 'دست: ' + event.data.handCount + ' • صورت: ' + event.data.faceCount +
-            ' • پردازش: ' + elapsed + ' میلی‌ثانیه';
+          setText(visionFeedback, 'visionStats', { hands: event.data.handCount, faces: event.data.faceCount, time: elapsed });
           consumeGesture(event.data, now);
         }
       };
@@ -387,7 +388,7 @@
     if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
     stopGestureRecognition();
     startGestureRecognition();
-    if (stream && !smartGestures.checked) cameraStatus.textContent = 'حالت ساده: حرکت آرام و پیوسته = خوشحالی؛ حرکت شدید = تعجب.';
+    if (stream && !smartGestures.checked) setText(cameraStatus, 'حالت ساده: حرکت آرام و پیوسته = خوشحالی؛ حرکت شدید = تعجب.');
   });
   gestureRetry.addEventListener('click', function () {
     smartGestures.checked = true;
@@ -397,7 +398,7 @@
 
   /* ================= Mood handling ================= */
   function showMood() {
-    moodEl.textContent = MOOD_FA[mood];
+    setText(moodEl, MOOD_FA[mood]);
     moodEl.classList.add("show");
     clearTimeout(moodTimer);
     moodTimer = setTimeout(function () { moodEl.classList.remove("show"); }, 1400);
@@ -464,10 +465,10 @@
   applyMood();
 
   addEventListener("click", function (e) {
-    if (!e.target.closest("#camera-controls, #mood-picker")) cycleMood();
+    if (!e.target.closest("#camera-controls, #mood-picker, #language-controls")) cycleMood();
   });
   addEventListener("keydown", function (e) {
-    if (!e.target.closest("#camera-controls, #mood-picker") && !e.repeat && (e.code === "Space" || e.code === "Enter")) cycleMood();
+    if (!e.target.closest("#camera-controls, #mood-picker, #language-controls") && !e.repeat && (e.code === "Space" || e.code === "Enter")) cycleMood();
   });
 
   /* ================= Blinking ================= */

@@ -55,6 +55,24 @@ const root = path.resolve(__dirname, '..');
       try {
         await page.waitForFunction(() => document.querySelector('#stage').dataset.mood === 'happy', {}, { timeout: 20000 });
         assert((await page.locator('#gesture-status').textContent()).includes('لایک'));
+        await page.locator('#language-picker').selectOption('en');
+        assert.equal(await page.locator('html').getAttribute('lang'), 'en');
+        assert.equal(await page.locator('html').getAttribute('dir'), 'ltr');
+        assert.equal(await page.locator('#camera-toggle').textContent(), 'Turn camera off');
+        assert.equal(await page.locator('[data-select-mood="happy"]').textContent(), 'Happy');
+        assert((await page.locator('#gesture-status').textContent()).includes('Thumbs up'));
+        assert.equal(await page.locator('#stage').getAttribute('data-mood'), 'happy');
+        assert.equal(await page.locator('#camera-toggle').getAttribute('aria-pressed'), 'true');
+        await page.waitForTimeout(250);
+        assert((await page.locator('#vision-feedback').textContent()).includes('Hands:'));
+        await page.reload();
+        assert.equal(await page.locator('html').getAttribute('lang'), 'en');
+        assert.equal(await page.locator('#camera-toggle').textContent(), 'Turn camera on');
+        const untranslated = await page.locator('#camera-controls').innerText();
+        assert(!/[\u0600-\u06ff]/.test(untranslated), 'English controls must not retain Persian text');
+        await page.locator('#language-picker').selectOption('fa');
+        assert.equal(await page.locator('html').getAttribute('dir'), 'rtl');
+        assert.equal(await page.locator('#camera-toggle').textContent(), 'روشن کردن دوربین');
         assert.deepEqual(errors, []);
         console.log('PASS: real thumbs-up image -> actual models -> happy; added latency:', delay, 'ms');
       } catch (error) {

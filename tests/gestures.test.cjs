@@ -18,8 +18,9 @@ function harness() {
     };
   }
   const context = {
+    NodeFilter: { SHOW_TEXT: 4 },
     location: { protocol: 'http:' },
-    document: { getElementById: k => elements[k] ??= element(), querySelectorAll: () => [],
+    document: { documentElement: {}, createTreeWalker: () => ({ nextNode: () => null }), getElementById: k => elements[k] ??= element(), querySelectorAll: () => [],
       createElement: () => ({ getContext: () => ({}) }), addEventListener() {} },
     matchMedia: () => ({ matches: false }), performance: { now: () => now },
     innerWidth: 1000, innerHeight: 700, addEventListener() {}, requestAnimationFrame() {},
@@ -32,7 +33,9 @@ function harness() {
     ready: () => { gestureState = 'ready'; },
     state: () => ({ mood, selectedMood, gestureState })
   };})();`);
-  vm.runInNewContext(script, context);
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../i18n.js'), 'utf8'), context);
+  vm.runInContext(script, context);
   return { api: context.api, elements,
     advance(ms) { now += ms; },
     send(result) { context.api.consumeGesture(result, now); },

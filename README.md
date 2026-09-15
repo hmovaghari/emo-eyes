@@ -21,7 +21,9 @@ An interactive, lightweight, and expressive web-based simulation of robotic eyes
 
 ## Frontend deployment
 
-The browser application consists of `index.html` (markup), `styles.css` (styles), `app.js` (browser logic), `.nojekyll`, and the complete `vendor/mediapipe/` directory (about 35 MB). Keep these paths together when publishing to GitHub Pages or another static HTTPS host. No server-side API is called by the frontend.
+The browser application consists of `index.html` (markup), `styles.css` (styles), `i18n.js` (Persian/English translations), `app.js` (browser logic), `.nojekyll`, and the complete `vendor/mediapipe/` directory (about 35 MB). Keep these paths together when publishing to GitHub Pages or another static HTTPS host. No server-side API is called by the frontend.
+
+Use the language selector to switch between Persian (RTL) and English (LTR). Persian is the default. Your choice is saved locally when browser storage is available. Switching languages updates visible status messages without restarting the camera or changing the selected mood.
 
 `backend/` contains isolated, optional server-side development files. `tests/` contains development tests. Neither is needed in the deployed frontend. When using GitHub Pages branch-root publishing, GitHub may also serve other repository files as static downloads; use a deployment artifact containing only the frontend files if those files must be excluded entirely.
 

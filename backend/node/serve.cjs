@@ -11,7 +11,7 @@ const server = http.createServer((request, response) => {
   if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405).end(); return; }
   if (pathname === '/') pathname = '/index.html';
   const file = path.resolve(root, '.' + pathname);
-  if (!file.startsWith(root + path.sep) || (!['/index.html', '/styles.css', '/app.js'].includes(pathname) && !pathname.startsWith('/vendor/mediapipe/'))) {
+  if (!file.startsWith(root + path.sep) || (!['/index.html', '/styles.css', '/i18n.js', '/app.js'].includes(pathname) && !pathname.startsWith('/vendor/mediapipe/'))) {
     response.writeHead(404).end('Not found'); return;
   }
   fs.readFile(file, (error, data) => {

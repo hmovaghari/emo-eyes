@@ -7,6 +7,12 @@
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
+  <div id="language-controls" data-no-i18n>
+    <select id="language-picker" aria-label="Language / زبان" dir="ltr">
+      <option value="fa" lang="fa">فارسی</option>
+      <option value="en" lang="en">English</option>
+    </select>
+  </div>
   <div id="stage" data-mood="normal">
     <div class="eye" id="eyeL"><div class="pupil"><svg viewBox="0 0 100 100" aria-hidden="true"><g class="expression-art"><path class="expression"/><path class="tear" d="M79 71 Q68 87 79 89 Q90 87 79 71Z"/></g><g class="blush"><path d="M20 76 L18 82 M28 76 L26 82 M36 76 L34 82"/></g><g class="thought-dots"><circle cx="37" cy="80" r="3"/><circle cx="50" cy="80" r="3"/><circle cx="63" cy="80" r="3"/></g></svg></div><div class="lid"></div></div>
     <div class="eye" id="eyeR"><div class="pupil"><svg viewBox="0 0 100 100" aria-hidden="true"><g class="expression-art"><path class="expression"/><path class="tear" d="M79 71 Q68 87 79 89 Q90 87 79 71Z"/></g><g class="blush"><path d="M20 76 L18 82 M28 76 L26 82 M36 76 L34 82"/></g><g class="thought-dots"><circle cx="37" cy="80" r="3"/><circle cx="50" cy="80" r="3"/><circle cx="63" cy="80" r="3"/></g></svg></div><div class="lid"></div></div>
@@ -52,6 +58,7 @@
   </div>
   <div id="hints"><span>کلیک/لمس = تغییر حالت</span><span>•</span><span>حرکت = دنبال کردن</span></div>
 
+<script src="./i18n.js" defer></script>
 <script src="./app.js" defer></script>
 </body>
 </html>

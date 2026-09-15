@@ -6,6 +6,7 @@ Run logic regression tests:
 
 ```sh
 node --test tests/gestures.test.cjs
+node --test tests/i18n.test.cjs
 ```
 
 For the real-model browser regression test, install Playwright and use an installed Edge browser:
