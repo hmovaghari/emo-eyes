@@ -261,6 +261,8 @@
     <p id="gesture-status" role="status">با روشن کردن دوربین، تشخیص ژست فعال می‌شود.</p>
     <p id="local-server-help" hidden style="color:#ffd098">صفحه مستقیم از فایل باز شده است؛ تشخیص ژست اینجا کار نمی‌کند. فایل <b dir="ltr">Start-EMO.cmd</b> کنار index.html را دابل‌کلیک کن و دوربین را در صفحهٔ جدید روشن کن. پنجرهٔ اجرا را باز نگه دار.</p>
     <p id="vision-feedback" style="margin:4px 0;color:#a0b8b3;font-size:11px"></p>
+    <button id="gesture-retry" type="button" hidden>تلاش دوباره برای تشخیص</button>
+    <details id="gesture-error" hidden><summary>جزئیات خطای تشخیص</summary><p dir="ltr" style="overflow-wrap:anywhere"></p></details>
     <details id="gesture-guide">
       <summary>راهنمای ژست‌ها</summary>
       <p>لب‌ها را مثل بوس جمع کن یا 🤟 نشان بده ← عاشق<br>مشت ✊ یا 👎 ← عصبانی<br>👍 یا لبخند ← خوشحال<br>✌️ ← هیجان‌زده<br>کف دست باز 🖐️ ← شیطون<br>اشاره به بالا ☝️ ← در حال فکر<br>چشمک ← شیطون</p>
@@ -329,7 +331,7 @@
   var cameraTarget = { x: .5, y: .5, time: -Infinity };
 
   function stopCamera(message) {
-    stopGestureRecognition();
+    stopGestureRecognition(message || 'دوربین خاموش است؛ برای تشخیص ژست دوباره روشنش کن.');
     cameraRequest++;
     clearInterval(cameraTimer);
     cameraTimer = null;
@@ -378,6 +380,8 @@
 
   function readMotion() {
     if (video.readyState < 2) return;
+    // Recover an inactive recognizer without toggling the working camera.
+    if (stream && smartGestures.checked && gestureState === 'off' && !document.hidden) startGestureRecognition();
     context.drawImage(video, 0, 0, 80, 60);
     var pixels = context.getImageData(0, 0, 80, 60).data;
     var frame = new Float32Array(4800), meanChange = 0;
@@ -462,6 +466,8 @@
   var smartGestures = document.getElementById('smart-gestures');
   var gestureStatus = document.getElementById('gesture-status');
   var visionFeedback = document.getElementById('vision-feedback');
+  var gestureRetry = document.getElementById('gesture-retry');
+  var gestureError = document.getElementById('gesture-error');
   var isFilePage = location.protocol === 'file:';
   document.getElementById('local-server-help').hidden = !isFilePage;
   if (isFilePage) gestureStatus.textContent = 'برای تشخیص ژست، برنامه را با Start-EMO.cmd اجرا کن.';
@@ -484,14 +490,17 @@
       var data = event.data;
       try {
         if (data.type === 'init') {
+          self.postMessage({ type: 'progress', label: 'بارگذاری کتابخانهٔ تشخیص…' });
           var vision = await import(data.base + 'vision_bundle.mjs');
           var files = await vision.FilesetResolver.forVisionTasks(data.base + 'wasm');
+          self.postMessage({ type: 'progress', label: 'بارگذاری مدل دست؛ بار اول ممکن است زمان ببرد…' });
           handModel = await vision.GestureRecognizer.createFromOptions(files, {
             baseOptions: { modelAssetPath: data.base + 'gesture_recognizer.task', delegate: 'CPU' },
             runningMode: 'VIDEO', numHands: 2,
             minHandDetectionConfidence: .6, minHandPresenceConfidence: .6,
             cannedGesturesClassifierOptions: { scoreThreshold: .65 }
           });
+          self.postMessage({ type: 'progress', label: 'مدل دست آماده است؛ بارگذاری مدل صورت…' });
           faceModel = await vision.FaceLandmarker.createFromOptions(files, {
             baseOptions: { modelAssetPath: data.base + 'face_landmarker.task', delegate: 'CPU' },
             runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true,
@@ -584,14 +593,14 @@
     }, 2400);
   }
 
-  function stopGestureRecognition() {
+  function stopGestureRecognition(reason) {
     clearInterval(gestureInterval); clearTimeout(gestureWatchdog);
     if (gestureWorker) gestureWorker.terminate();
     gestureWorker = null; gestureInterval = null; gestureBusy = false;
     gestureVideoTime = -1; gestureState = 'off';
     candidateKey = ''; acceptedKey = ''; candidateLastSeen = 0; acceptedAt = -Infinity;
     candidateFrames = 0;
-    if (gestureStatus) gestureStatus.textContent = isFilePage ? 'تشخیص ژست در حالت فایل فعال نمی‌شود؛ Start-EMO.cmd را اجرا کن.' : 'تشخیص ژست خاموش است.';
+    if (gestureStatus) gestureStatus.textContent = isFilePage ? 'تشخیص ژست در حالت فایل فعال نمی‌شود؛ Start-EMO.cmd را اجرا کن.' : (reason || 'تشخیص ژست متوقف شده است.');
     if (visionFeedback) visionFeedback.textContent = '';
   }
 
@@ -601,16 +610,23 @@
     clearTimeout(reactionTimer);
     if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
     gestureState = 'error';
-    gestureStatus.textContent = 'تشخیص ژست بارگذاری نشد؛ فقط حرکت فعال است. صفحه را روی localhost یا HTTPS باز کن و گزینهٔ هوشمند را خاموش و روشن کن.';
+    gestureStatus.textContent = 'تشخیص ژست بارگذاری نشد؛ دوربین در حالت ساده است. «تلاش دوباره» را بزن.';
+    gestureRetry.hidden = false;
+    gestureError.hidden = false;
+    gestureError.querySelector('p').textContent = String(error && error.message || error);
   }
 
   function startGestureRecognition() {
+    if (gestureState === 'loading' || gestureState === 'ready') return;
     stopGestureRecognition();
-    if (!stream || !smartGestures.checked) return;
+    if (!stream) { gestureStatus.textContent = 'ابتدا دوربین را روشن کن.'; return; }
+    if (!smartGestures.checked) { gestureStatus.textContent = 'گزینهٔ واکنش هوشمند خاموش است؛ برای تشخیص ژست تیک آن را بزن.'; return; }
     if (!window.Worker || !window.createImageBitmap || !window.OffscreenCanvas || location.protocol === 'file:') {
       failGestureRecognition('Worker support and an HTTP(S) server are required'); return;
     }
     gestureState = 'loading';
+    gestureRetry.hidden = true;
+    gestureError.hidden = true;
     gestureStatus.textContent = 'در حال آماده‌سازی تشخیص دست و صورت…';
     var blobURL = URL.createObjectURL(new Blob(['(' + visionWorkerMain.toString() + ')();'], { type: 'text/javascript' }));
     try {
@@ -620,6 +636,13 @@
       worker.onmessage = function (event) {
         if (gestureWorker !== worker) return;
         clearTimeout(gestureWatchdog);
+        if (event.data.type === 'progress') {
+          gestureStatus.textContent = event.data.label;
+          gestureWatchdog = setTimeout(function () {
+            if (gestureWorker === worker) failGestureRecognition('Model loading timed out after 120 seconds. Check your connection and retry.');
+          }, 120000);
+          return;
+        }
         if (event.data.type === 'error') { failGestureRecognition(event.data.message); return; }
         if (event.data.type === 'ready') {
           gestureState = 'ready';
@@ -650,15 +673,21 @@
       worker.postMessage({ type: 'init', base: new URL('vendor/mediapipe/', location.href).href });
       gestureWatchdog = setTimeout(function () {
         if (gestureWorker === worker) failGestureRecognition('Model loading timed out');
-      }, 45000);
+      }, 120000);
     } catch (error) { failGestureRecognition(error); }
     finally { URL.revokeObjectURL(blobURL); }
   }
   smartGestures.addEventListener('change', function () {
     clearTimeout(reactionTimer);
     if (mood !== selectedMood) { mood = selectedMood; applyMood(); }
+    stopGestureRecognition();
     startGestureRecognition();
     if (stream && !smartGestures.checked) cameraStatus.textContent = 'حالت ساده: حرکت آرام و پیوسته = خوشحالی؛ حرکت شدید = تعجب.';
+  });
+  gestureRetry.addEventListener('click', function () {
+    smartGestures.checked = true;
+    stopGestureRecognition();
+    startGestureRecognition();
   });
 
   /* ================= Mood handling ================= */
