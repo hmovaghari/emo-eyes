@@ -15,9 +15,15 @@ An interactive, lightweight, and expressive web-based simulation of robotic eyes
 
 ## 🚀 How to Use
 
-1. Clone this repository, including the `vendor/mediapipe` directory (about 35 MB).
-2. On Windows, double-click **Start-EMO.cmd**. It starts a local-only server and opens your browser; keep its console window open while using EMO. It uses Node.js from PATH or the bundled Codex runtime when available. Alternatively, run `node serve.cjs` and open the printed address, or use `python -m http.server 8000 --bind 127.0.0.1` and open `http://localhost:8000`. Gesture recognition needs HTTP on localhost or HTTPS; opening `index.html` directly still supports the basic eyes but cannot load the gesture worker.
-3. **Pro Tip:** Press `F11` to enter Fullscreen mode for the ultimate EMO experience!
+1. Open the published HTTPS website in a supported browser.
+2. Turn on the camera, grant permission, and wait for gesture recognition to become ready.
+3. Pick a mood or show one of the gestures below. Press `F11` for fullscreen on desktop.
+
+## Frontend deployment
+
+The browser application consists of `index.html` (markup), `styles.css` (styles), `app.js` (browser logic), `.nojekyll`, and the complete `vendor/mediapipe/` directory (about 35 MB). Keep these paths together when publishing to GitHub Pages or another static HTTPS host. No server-side API is called by the frontend.
+
+`backend/` contains isolated, optional server-side development files. `tests/` contains development tests. Neither is needed in the deployed frontend. When using GitHub Pages branch-root publishing, GitHub may also serve other repository files as static downloads; use a deployment artifact containing only the frontend files if those files must be excluded entirely.
 
 ## 🛠️ Tech Stack
 
@@ -45,11 +51,10 @@ Short detections are ignored. A held gesture keeps its reaction active; the robo
 
 In smart mode, general motion only steers the eyes. Uncheck the smart-gesture option to return to simple motion reactions (gentle movement = happy, strong movement = surprised). The sensitivity slider controls that simple motion mode, not hand/face recognition. If models fail to load, the UI reports the failure and falls back to simple motion; toggle smart recognition off and on to retry. Camera-off and backgrounding the page terminate the worker and camera stream.
 
-Run the gesture regression tests with `node --test tests/gestures.test.cjs`. Real webcam accuracy depends on lighting, framing, and pose; automated tests do not establish real-world recognition accuracy.
+Real webcam accuracy depends on lighting, framing, and pose; automated tests do not establish real-world recognition accuracy. Developer test instructions are in `tests/README.md`.
 
 The camera panel displays detected hand/face counts and per-frame processing latency. Matching predictions are allowed to arrive slowly (up to a three-second gap), so slower laptops can still confirm a held gesture.
 
-For a real-model browser regression test, install Playwright and use an installed Edge browser, then run `node tests/gestures-browser.cjs`. Alternatively, set `PLAYWRIGHT_MODULE` to an existing Playwright installation. This feeds an official thumbs-up image through the full camera pipeline at normal speed and with 750 ms additional latency per frame, asserting that the eyes actually become happy.
 
 ## 📸 Preview
 *(Tip: Add a screenshot or a GIF of your eyes moving here to make your README pop!)*

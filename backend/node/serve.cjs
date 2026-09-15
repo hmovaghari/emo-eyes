@@ -3,7 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const root = __dirname;
+const root = path.resolve(__dirname, '../..');
 const server = http.createServer((request, response) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname); }
@@ -11,12 +11,12 @@ const server = http.createServer((request, response) => {
   if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405).end(); return; }
   if (pathname === '/') pathname = '/index.html';
   const file = path.resolve(root, '.' + pathname);
-  if (!file.startsWith(root + path.sep) || (pathname !== '/index.html' && !pathname.startsWith('/vendor/mediapipe/'))) {
+  if (!file.startsWith(root + path.sep) || (!['/index.html', '/styles.css', '/app.js'].includes(pathname) && !pathname.startsWith('/vendor/mediapipe/'))) {
     response.writeHead(404).end('Not found'); return;
   }
   fs.readFile(file, (error, data) => {
     if (error) { response.writeHead(404).end('Not found'); return; }
-    const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm' };
+    const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm' };
     response.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     response.end(request.method === 'HEAD' ? undefined : data);
   });

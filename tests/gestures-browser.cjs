@@ -14,7 +14,7 @@ const root = path.resolve(__dirname, '..');
     fs.readFile(target, (error, data) => {
       if (error) { res.writeHead(404).end(); return; }
       const extension = path.extname(target);
-      res.setHeader('Content-Type', { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.jpg': 'image/jpeg' }[extension] || 'application/octet-stream');
+      res.setHeader('Content-Type', { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.jpg': 'image/jpeg' }[extension] || 'application/octet-stream');
       res.end(data);
     });
   });

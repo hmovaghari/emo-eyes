@@ -26,7 +26,7 @@ function harness() {
     setTimeout: (fn, ms) => { timers.set(++timerId, { fn, ms }); return timerId; },
     clearTimeout: id => timers.delete(id), setInterval() {}, clearInterval() {}, console
   };
-  let script = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+  let script = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
   script = script.replace(/\}\)\(\);\s*$/, `globalThis.api = {
     classifyGesture, consumeGesture, selectMood, stopCamera, reactToMotion,
     ready: () => { gestureState = 'ready'; },
